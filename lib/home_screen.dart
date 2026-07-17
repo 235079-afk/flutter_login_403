@@ -1,72 +1,102 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'cubits/auth_cubit.dart';
+import 'cubits/auth_state.dart';
+import 'cubits/product_cubit.dart';
+import 'cubits/product_state.dart';
+import 'models/product.dart';
 import 'widgets/theme_toggle_button.dart';
 
-class HomeScreen extends StatelessWidget {
-  final bool isDarkMode;
-  final VoidCallback onToggleTheme;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
-  const HomeScreen({
-    super.key,
-    required this.isDarkMode,
-    required this.onToggleTheme,
-  });
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    context.read<ProductCubit>().fetchProducts();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final name = ModalRoute.of(context)!.settings.arguments as String;
+    final authState = context.watch<AuthCubit>().state;
+    final name = authState is AuthSuccess ? authState.name : 'there';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
         actions: [
-          ThemeToggleButton(isDarkMode: isDarkMode, onToggle: onToggleTheme),
+          const ThemeToggleButton(),
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
-            },
+            onPressed: () => context.read<AuthCubit>().logout(),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          // The only dynamic part of this screen: the greeting.
-          Text(
-            'Welcome back, $name 👋',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            "Here's what's happening today.",
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _statCard('Tasks Done', '12', Icons.check_circle_outline),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _statCard('Progress', '78%', Icons.trending_up),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Recent Activity',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          for (var i = 1; i <= 4; i++) _activityTile('Activity item $i'),
-        ],
+      body: RefreshIndicator(
+        onRefresh: () => context.read<ProductCubit>().fetchProducts(),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text(
+              'Welcome back, $name 👋',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              "Here's what's new in the shop.",
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 20),
+            BlocBuilder<ProductCubit, ProductState>(
+              builder: (context, state) {
+                if (state is ProductInitial || state is ProductLoading) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 60),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (state is ProductError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            state.message,
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: () =>
+                                context.read<ProductCubit>().fetchProducts(),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final products = (state as ProductLoaded).products;
+
+                return Column(
+                  children: [
+                    for (final product in products) _ProductCard(product: product),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
 
       bottomNavigationBar: BottomNavigationBar(
@@ -88,32 +118,84 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _statCard(String label, String value, IconData icon) {
+class _ProductCard extends StatelessWidget {
+  final Product product;
+  const _ProductCard({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.all(12),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: Colors.blue.shade700),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                product.imageUrl,
+                width: 80,
+                height: 80,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.grey.shade300,
+                  child: const Icon(Icons.image_not_supported),
+                ),
+              ),
             ),
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    product.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '\$${product.price.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    product.productCode,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _activityTile(String title) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(Icons.check_circle, color: Colors.blue.shade700),
-      title: Text(title),
     );
   }
 }

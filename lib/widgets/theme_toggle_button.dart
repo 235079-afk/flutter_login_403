@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubits/theme_cubit.dart';
 
 class ThemeToggleButton extends StatelessWidget {
-  final bool isDarkMode;
-  final VoidCallback onToggle;
-
-  const ThemeToggleButton({
-    super.key,
-    required this.isDarkMode,
-    required this.onToggle,
-  });
+  const ThemeToggleButton({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = context.watch<ThemeCubit>().isDarkMode;
+
     return IconButton(
       tooltip: isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
-      onPressed: onToggle,
+      onPressed: () => context.read<ThemeCubit>().toggleTheme(),
       icon: Icon(
         isDarkMode ? Icons.dark_mode : Icons.light_mode,
         color: isDarkMode ? Colors.amberAccent : Colors.orange,
